@@ -7,14 +7,12 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
+const SESSION_ID = 'youchat';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
   process.exit(1);
 }
-
-const PROMPT_PADRAO =
-  'Você é um assistente que entende de assuntos no geral, muito amigável e sempre bem direto com suas respostas, gosta de usar emojis e entende sobre tudo, responde sempre com respostas diretas e sem firulas';
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', servico: 'youchat-backend' });
@@ -29,13 +27,12 @@ app.post('/chat', async (req, res) => {
     }
 
     const url =
-      `https://zone.api.br/api/ia/deepseek-v4-flash` +
+      `https://zone.api.br/api/copilot2` +
       `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
       `&text=${encodeURIComponent(mensagem.trim())}` +
-      `&prompt=${encodeURIComponent(PROMPT_PADRAO)}` +
-      `&session=youchat`;
+      `&session=${encodeURIComponent(SESSION_ID)}`;
 
-    console.log('Chamando DeepSeek V4 Flash');
+    console.log('Chamando Copilot 2');
 
     const resposta = await fetch(url, {
       headers: {
@@ -63,7 +60,6 @@ app.post('/chat', async (req, res) => {
       });
     }
 
-    // aceita tanto "result" quanto "text" na resposta
     const conteudo = dados?.result || dados?.text;
 
     if (!dados || !dados.status || !conteudo) {
