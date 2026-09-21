@@ -26,21 +26,14 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ erro: 'Campo "mensagem" obrigatório.' });
     }
 
-    // TUDO LIGADO
-    const mode = 'expert';
-    const busca = true;
-    const thinking = true;
-
     const url =
       `https://zone.api.br/api/ia/deepseek` +
       `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
       `&text=${encodeURIComponent(mensagem.trim())}` +
       `&session=${encodeURIComponent(SESSION_ID)}` +
-      `&mode=${mode}` +
-      `&search=${busca}` +
-      `&thinking=${thinking}`;
+      `&mode=expert`;
 
-    console.log('DeepSeek · mode:', mode, '· search:', busca, '· thinking:', thinking);
+    console.log('DeepSeek expert · URL len:', url.length);
 
     const resposta = await fetch(url, {
       headers: {
