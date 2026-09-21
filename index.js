@@ -7,50 +7,15 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
+const SESSION_ID = 'youchat';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
   process.exit(1);
 }
 
-// ========== memória em RAM ==========
-const LIMITE_HISTORICO = 10;
-const historico = [];
-
-function adicionarAoHistorico(role, content) {
-  historico.push({ role, content });
-  while (historico.length > LIMITE_HISTORICO) {
-    historico.shift();
-  }
-}
-
-function montarPromptComHistorico() {
-  const base =
-    'Você é um assistente amigável, direto e entende de tudo — programação, fatos, atualidades. Responda em português do Brasil, com emojis quando fizer sentido. Se não tiver certeza de algo, diga que não sabe em vez de inventar.';
-
-  if (historico.length === 0) return base;
-
-  const linhas = historico
-    .map(m => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`)
-    .join('\n');
-
-  return (
-    base +
-    '\n\n--- Histórico recente ---\n' +
-    linhas +
-    '\n--- Fim ---\n' +
-    'Use o histórico pra manter o contexto. Responda à nova mensagem a seguir.'
-  );
-}
-// ====================================
-
 app.get('/', (req, res) => {
   res.json({ status: 'ok', servico: 'youchat-backend' });
-});
-
-app.post('/limpar', (req, res) => {
-  historico.length = 0;
-  res.json({ status: 'ok', mensagem: 'Histórico limpo.' });
 });
 
 app.post('/chat', async (req, res) => {
@@ -61,16 +26,21 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ erro: 'Campo "mensagem" obrigatório.' });
     }
 
-    const msgLimpa = mensagem.trim();
-    const prompt = montarPromptComHistorico();
+    // TUDO LIGADO
+    const mode = 'expert';
+    const busca = true;
+    const thinking = true;
 
     const url =
-      `https://zone.api.br/api/copilot` +
+      `https://zone.api.br/api/ia/deepseek` +
       `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
-      `&text=${encodeURIComponent(msgLimpa)}` +
-      `&prompt=${encodeURIComponent(prompt)}`;
+      `&text=${encodeURIComponent(mensagem.trim())}` +
+      `&session=${encodeURIComponent(SESSION_ID)}` +
+      `&mode=${mode}` +
+      `&search=${busca}` +
+      `&thinking=${thinking}`;
 
-    console.log('Copilot 1 · Histórico:', historico.length);
+    console.log('DeepSeek · mode:', mode, '· search:', busca, '· thinking:', thinking);
 
     const resposta = await fetch(url, {
       headers: {
@@ -105,9 +75,6 @@ app.post('/chat', async (req, res) => {
         detalhe: JSON.stringify(dados).substring(0, 300)
       });
     }
-
-    adicionarAoHistorico('user', msgLimpa);
-    adicionarAoHistorico('assistant', conteudo);
 
     return res.json({ resposta: conteudo });
   } catch (erro) {
