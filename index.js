@@ -68,11 +68,12 @@ async function chamarGPT4oMini(texto) {
   return { status: resposta.status, body: corpo };
 }
 
+// ===== DeepSearch: parâmetro correto é "q" =====
 async function pesquisarWeb(termo) {
   const url =
     `https://zone.api.br/api/ia/deepsearch` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
-    `&text=${encodeURIComponent(termo)}`;
+    `&q=${encodeURIComponent(termo)}`;
 
   try {
     const r = await fetch(url, {
@@ -80,24 +81,49 @@ async function pesquisarWeb(termo) {
     });
     const texto = await r.text();
     const dados = JSON.parse(texto);
-    return dados?.result || dados?.text || '';
+
+    if (!dados?.status || !dados?.result) return '';
+
+    // corta repetição (bug da API que repete 4x)
+    let resultado = dados.result;
+    if (resultado.length > 1500) {
+      const metade = resultado.substring(0, 1500);
+      const ultimoParagrafo = metade.lastIndexOf('\n\n');
+      resultado = ultimoParagrafo > 500
+        ? metade.substring(0, ultimoParagrafo)
+        : metade;
+      resultado += '\n\n[... resumo cortado pra economizar tokens]';
+    }
+
+    return resultado;
   } catch (e) {
     console.log('DeepSearch erro:', e.message);
     return '';
   }
 }
 
+// ===== Placar: parâmetro correto é "search" =====
 async function buscarPlacar(time) {
   const url =
     `https://zone.api.br/api/placar` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
-    `&time=${encodeURIComponent(time)}`;
+    `&search=${encodeURIComponent(time)}`;
 
   try {
     const r = await fetch(url);
     const texto = await r.text();
     const dados = JSON.parse(texto);
-    return JSON.stringify(dados).substring(0, 800);
+
+    if (!dados?.status || !dados?.result) return '';
+
+    const jogo = dados.result;
+    const casa = jogo?.times?.casa || '?';
+    const fora = jogo?.times?.fora || '?';
+    const gc = jogo?.placar?.casa || '0';
+    const gf = jogo?.placar?.fora || '0';
+    const status = jogo?.status || '?';
+
+    return `Placar: ${casa} ${gc} x ${gf} ${fora} — ${status}`;
   } catch (e) {
     console.log('Placar erro:', e.message);
     return '';
@@ -172,7 +198,7 @@ app.post('/chat', async (req, res) => {
       if (resultadoDeep && resultadoDeep.length > 10) {
         partes.push('Pesquisa web:\n' + resultadoDeep);
       }
-      if (resultadoPlacar && resultadoPlacar.length > 10 && !resultadoPlacar.includes('"error"')) {
+      if (resultadoPlacar && resultadoPlacar.length > 10) {
         partes.push('Dados de futebol:\n' + resultadoPlacar);
       }
 
