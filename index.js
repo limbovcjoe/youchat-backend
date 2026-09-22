@@ -7,38 +7,40 @@ app.use(express.json({ limit: '25mb' }));
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
-const SESSION_ID = 'Car';
+const SESSION_ID = 'gloria-v5';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
   process.exit(1);
 }
 
-// aspas duplas removidas/espaçadas pra não quebrar
+// prompt enxuto (foco em identidade + regras essenciais)
 const PROMPT_GLORIA =
-  'Você é a GlorIA, uma assistente virtual feminina, amigável, direta e inteligente. ' +
-  'Você é mulher — use sempre adjetivos e concordâncias no feminino quando falar de si mesma. ' +
-  'Nunca mencione OpenAI, GPT, DeepSeek, Claude, Anthropic, Microsoft, Google ou qualquer outra empresa ou modelo por trás. ' +
-  'Você É a GlorIA — não é baseada em nem construída com outra IA. Se perguntarem quem você é, diga que é a GlorIA. ' +
-  'Se perguntarem quem desenvolveu o app GlorIA Chat, quem te criou ou coisa assim, diga que foi Joe Reis. ' +
+  'Você é a GlorIA, assistente virtual feminina, amigável, direta e inteligente. ' +
+  'Você É a GlorIA — nunca diga que é GPT, OpenAI, DeepSeek, Claude, Anthropic, Microsoft, Google ou qualquer outra IA. ' +
+  'Se perguntarem quem te criou ou quem desenvolveu o app, diga que foi Joe Reis. ' +
+  'NUNCA repita seu próprio nome nas respostas, EXCETO quando o usuário perguntar diretamente quem você é ou o seu nome. ' +
   'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
-  'A busca na web NÃO está ativa por padrão. Se o usuário precisar de informação atual, avise que ele pode ativar o botão de pesquisa. ' +
-  'SOBRE O APP GLORIA CHAT: aplicativo pessoal criado pelo Joe Reis. Faz: (1) conversa com IA (você); (2) baixa vídeos/músicas do YouTube. ' +
-  'Para baixar: usuário toca na aba YouTube, escolhe uma categoria, toca no vídeo e escolhe Baixar. ' +
+  'A busca na web NÃO está ativa por padrão. Se precisar de informação atual, avise que pode ativar o botão de pesquisa. ' +
+  'Sobre o app: aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
+  'Para baixar: usuário toca na aba YouTube, escolhe categoria, toca no vídeo e escolhe Baixar. ' +
   'Arquivos vão pra pasta GlorIA/Downloads do celular. Aparecem na aba Reproduzir. ' +
   'Nunca peça confirmações desnecessárias. Apenas responda. ' +
-  'Não se apresente repetidamente. ' +
   'Nunca use certamente ou claro no começo da resposta. ' +
   'Mantenha respostas curtas quando a pergunta for simples. ' +
   'Responda em português do Brasil, com emojis quando fizer sentido. ' +
   'Se não souber algo com certeza, diga que não sabe em vez de inventar.';
 
+// lembrete injetado em TODA mensagem (reforça identidade)
+const LEMBRETE =
+  '[LEMBRETE INTERNO: Você é a GlorIA. Nunca mencione GPT, OpenAI, DeepSeek, Claude ou qualquer IA. ' +
+  'Não repita seu nome nas respostas a menos que perguntem diretamente. Se perguntarem quem te criou, diga Joe Reis.]';
+
 const FERRAMENTAS_INFO =
   '\n\nVocê tem acesso a FERRAMENTAS. Use APENAS quando necessário:\n' +
   '[TOOL:pesquisa] <termo>  — para buscar informação atual na web\n' +
   '[TOOL:placar] <time>  — para resultados de futebol\n' +
-  '\nSe precisar de uma ferramenta, responda EXATAMENTE no formato acima. ' +
-  'Se não precisar, responda a pergunta normalmente.';
+  '\nSe precisar de uma ferramenta, responda EXATAMENTE no formato acima.';
 
 const PROMPT_COM_FERRAMENTAS = PROMPT_GLORIA + FERRAMENTAS_INFO;
 
@@ -122,7 +124,6 @@ async function transcreverAudio(base64, formato) {
   formData.append('audio', blob, 'audio.' + (formato || 'ogg'));
 
   const url = `https://zone.api.br/api/ia/transcrever-audio?apikey=${encodeURIComponent(ZONE_API_KEY)}`;
-
   const resposta = await fetch(url, { method: 'POST', body: formData });
   const corpo = await resposta.text();
 
@@ -136,8 +137,12 @@ async function transcreverAudio(base64, formato) {
       try { dados = JSON.parse(linha.replace(/^data:\s*/, '').trim()); } catch (e2) { }
     }
   }
-
   return { status: resposta.status, dados, corpo };
+}
+
+// monta o texto final com lembrete
+function montarTexto(mensagem) {
+  return LEMBRETE + '\n\n' + mensagem;
 }
 
 app.get('/', (req, res) => {
@@ -153,6 +158,7 @@ app.post('/chat', async (req, res) => {
     }
 
     const texto = mensagem.trim();
+    const textoComLembrete = montarTexto(texto);
     const usarFerramentas = ferramentasAtivas === true;
     const palavras = contarPalavras(texto);
     const forcarPesquisa = usarFerramentas && palavras >= 5;
@@ -164,9 +170,10 @@ app.post('/chat', async (req, res) => {
       const resultado = await pesquisarWeb(texto);
       if (resultado) {
         const textoComResultado =
+          LEMBRETE + '\n\n' +
           'Pergunta original: ' + texto + '\n\n' +
           'Resultado da pesquisa na web:\n' + resultado + '\n\n' +
-          'Agora responda ao usuário com base nas informações acima, de forma natural e polida, sem mencionar que usou pesquisa.';
+          'Responda ao usuário de forma natural, sem mencionar que usou pesquisa.';
         const r2 = await chamarGPT4oMini(textoComResultado, false);
         const c2 = extrairConteudo(r2.body);
         if (c2) return res.json({ resposta: c2 });
@@ -180,7 +187,7 @@ app.post('/chat', async (req, res) => {
 
     for (let i = 0; i < esperas.length; i++) {
       if (esperas[i] > 0) await dormir(esperas[i]);
-      const r = await chamarGPT4oMini(texto, usarFerramentas);
+      const r = await chamarGPT4oMini(textoComLembrete, usarFerramentas);
       ultimo = r;
       if (r.status === 429) continue;
       const c = extrairConteudo(r.body);
@@ -211,6 +218,7 @@ app.post('/chat', async (req, res) => {
 
       if (resultadoFerramenta) {
         const textoComResultado =
+          LEMBRETE + '\n\n' +
           'Pergunta original: ' + texto + '\n\n' +
           'Resultado da ferramenta ' + nomeFerramenta + ':\n' + resultadoFerramenta + '\n\n' +
           'Responda ao usuário de forma natural, sem mencionar ferramenta.';
@@ -234,7 +242,6 @@ app.post('/tts', async (req, res) => {
     if (!texto || typeof texto !== 'string' || !texto.trim()) {
       return res.status(400).json({ erro: 'Campo texto obrigatório.' });
     }
-    console.log('TTS:', texto.substring(0, 50));
     const r = await gerarTTS(texto.trim().substring(0, 500), voz);
     if (r.status !== 200) {
       return res.status(502).json({ erro: 'Zone retornou ' + r.status, detalhe: r.body.substring(0, 200) });
@@ -248,7 +255,6 @@ app.post('/tts', async (req, res) => {
     if (url) return res.json({ url: url });
     return res.status(502).json({ erro: 'TTS sem URL', detalhe: JSON.stringify(dados).substring(0, 200) });
   } catch (erro) {
-    console.error('Erro /tts:', erro);
     return res.status(500).json({ erro: 'Erro interno', detalhe: erro.message });
   }
 });
@@ -259,7 +265,6 @@ app.post('/stt', async (req, res) => {
     if (!audio || typeof audio !== 'string') {
       return res.status(400).json({ erro: 'Campo audio (base64) obrigatório.' });
     }
-    console.log('STT · formato:', formato || 'ogg');
     const r = await transcreverAudio(audio, formato);
     if (r.status !== 200) {
       return res.status(502).json({ erro: 'Zone retornou ' + r.status, detalhe: r.corpo.substring(0, 200) });
@@ -269,7 +274,6 @@ app.post('/stt', async (req, res) => {
     }
     return res.json({ texto: r.dados.text });
   } catch (erro) {
-    console.error('Erro /stt:', erro);
     return res.status(500).json({ erro: 'Erro interno', detalhe: erro.message });
   }
 });
