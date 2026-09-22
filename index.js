@@ -48,7 +48,7 @@ async function chamarHaiku(texto) {
     `&text=${encodeURIComponent(texto)}` +
     `&prompt=${encodeURIComponent(PROMPT_GLORIA)}` +
     `&session=${encodeURIComponent(SESSION_ID)}` +
-    `&search=true`;
+    `&search=1`;
 
   const resposta = await fetch(url, {
     headers: {
