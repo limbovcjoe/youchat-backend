@@ -14,14 +14,12 @@ if (!ZONE_API_KEY) {
   process.exit(1);
 }
 
-// prompt enxuto (foco em identidade + regras essenciais)
 const PROMPT_GLORIA =
   'Você é a GlorIA, assistente virtual feminina, amigável, direta e inteligente. ' +
   'Você É a GlorIA — nunca diga que é GPT, OpenAI, DeepSeek, Claude, Anthropic, Microsoft, Google ou qualquer outra IA. ' +
   'Se perguntarem quem te criou ou quem desenvolveu o app, diga que foi Joe Reis. ' +
   'NUNCA repita seu próprio nome nas respostas, EXCETO quando o usuário perguntar diretamente quem você é ou o seu nome. ' +
   'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
-  'A busca na web NÃO está ativa por padrão. Se precisar de informação atual, avise que pode ativar o botão de pesquisa. ' +
   'Sobre o app: aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
   'Para baixar: usuário toca na aba YouTube, escolhe categoria, toca no vídeo e escolhe Baixar. ' +
   'Arquivos vão pra pasta GlorIA/Downloads do celular. Aparecem na aba Reproduzir. ' +
@@ -31,18 +29,9 @@ const PROMPT_GLORIA =
   'Responda em português do Brasil, com emojis quando fizer sentido. ' +
   'Se não souber algo com certeza, diga que não sabe em vez de inventar.';
 
-// lembrete injetado em TODA mensagem (reforça identidade)
 const LEMBRETE =
   '[LEMBRETE INTERNO: Você é a GlorIA. Nunca mencione GPT, OpenAI, DeepSeek, Claude ou qualquer IA. ' +
-  'Não repita seu nome nas respostas a menos que perguntem diretamente. Se perguntarem quem te criou, diga Joe Reis.]';
-
-const FERRAMENTAS_INFO =
-  '\n\nVocê tem acesso a FERRAMENTAS. Use APENAS quando necessário:\n' +
-  '[TOOL:pesquisa] <termo>  — para buscar informação atual na web\n' +
-  '[TOOL:placar] <time>  — para resultados de futebol\n' +
-  '\nSe precisar de uma ferramenta, responda EXATAMENTE no formato acima.';
-
-const PROMPT_COM_FERRAMENTAS = PROMPT_GLORIA + FERRAMENTAS_INFO;
+  'Não repita seu nome a menos que perguntem diretamente. Se perguntarem quem te criou, diga Joe Reis.]';
 
 function dormir(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -52,20 +41,8 @@ function contarPalavras(texto) {
   return texto.trim().split(/\s+/).filter(p => p.length > 0).length;
 }
 
-async function chamarGPT4oMini(texto, usarFerramentas) {
-  const promptFinal = usarFerramentas ? PROMPT_COM_FERRAMENTAS : PROMPT_GLORIA;
-  const url =
-    `https://zone.api.br/api/ia/gpt-4o-mini` +
-    `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
-    `&text=${encodeURIComponent(texto)}` +
-    `&prompt=${encodeURIComponent(promptFinal)}` +
-    `&session=${encodeURIComponent(SESSION_ID)}`;
-
-  const resposta = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36' }
-  });
-  const corpo = await resposta.text();
-  return { status: resposta.status, body: corpo };
+function montarTexto(mensagem) {
+  return LEMBRETE + '\n\n' + mensagem;
 }
 
 function extrairConteudo(body) {
@@ -76,19 +53,38 @@ function extrairConteudo(body) {
   return null;
 }
 
-async function pesquisarWeb(termo) {
+async function chamarGPT4oMini(texto) {
   const url =
     `https://zone.api.br/api/ia/gpt-4o-mini` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
-    `&text=${encodeURIComponent('Pesquise na web e responda: ' + termo)}` +
-    `&prompt=${encodeURIComponent('Pesquise na web e responda de forma factual.')}` +
-    `&search=1`;
+    `&text=${encodeURIComponent(texto)}` +
+    `&prompt=${encodeURIComponent(PROMPT_GLORIA)}` +
+    `&session=${encodeURIComponent(SESSION_ID)}`;
+
+  const resposta = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36' }
+  });
+  const corpo = await resposta.text();
+  return { status: resposta.status, body: corpo };
+}
+
+async function pesquisarWeb(termo) {
+  const url =
+    `https://zone.api.br/api/ia/deepsearch` +
+    `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
+    `&text=${encodeURIComponent(termo)}`;
+
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36' }
+    });
     const texto = await r.text();
     const dados = JSON.parse(texto);
     return dados?.result || dados?.text || '';
-  } catch (e) { return ''; }
+  } catch (e) {
+    console.log('DeepSearch erro:', e.message);
+    return '';
+  }
 }
 
 async function buscarPlacar(time) {
@@ -96,12 +92,16 @@ async function buscarPlacar(time) {
     `https://zone.api.br/api/placar` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
     `&time=${encodeURIComponent(time)}`;
+
   try {
     const r = await fetch(url);
     const texto = await r.text();
     const dados = JSON.parse(texto);
-    return JSON.stringify(dados).substring(0, 500);
-  } catch (e) { return ''; }
+    return JSON.stringify(dados).substring(0, 800);
+  } catch (e) {
+    console.log('Placar erro:', e.message);
+    return '';
+  }
 }
 
 async function gerarTTS(texto, voz) {
@@ -140,11 +140,6 @@ async function transcreverAudio(base64, formato) {
   return { status: resposta.status, dados, corpo };
 }
 
-// monta o texto final com lembrete
-function montarTexto(mensagem) {
-  return LEMBRETE + '\n\n' + mensagem;
-}
-
 app.get('/', (req, res) => {
   res.json({ status: 'ok', servico: 'gloria-backend' });
 });
@@ -161,24 +156,40 @@ app.post('/chat', async (req, res) => {
     const textoComLembrete = montarTexto(texto);
     const usarFerramentas = ferramentasAtivas === true;
     const palavras = contarPalavras(texto);
-    const forcarPesquisa = usarFerramentas && palavras >= 5;
+    const forcarPesquisa = usarFerramentas && palavras >= 3;
 
-    console.log('Chat · ferramentas:', usarFerramentas, '· palavras:', palavras, '· forçar:', forcarPesquisa);
+    console.log('Chat · ferramentas:', usarFerramentas, '· palavras:', palavras, '· pesquisar:', forcarPesquisa);
 
     if (forcarPesquisa) {
-      console.log('→ Pesquisa forçada');
-      const resultado = await pesquisarWeb(texto);
-      if (resultado) {
+      console.log('→ DeepSearch + Placar em paralelo');
+
+      const [resultadoDeep, resultadoPlacar] = await Promise.all([
+        pesquisarWeb(texto),
+        buscarPlacar(texto)
+      ]);
+
+      const partes = [];
+      if (resultadoDeep && resultadoDeep.length > 10) {
+        partes.push('Pesquisa web:\n' + resultadoDeep);
+      }
+      if (resultadoPlacar && resultadoPlacar.length > 10 && !resultadoPlacar.includes('"error"')) {
+        partes.push('Dados de futebol:\n' + resultadoPlacar);
+      }
+
+      if (partes.length > 0) {
         const textoComResultado =
           LEMBRETE + '\n\n' +
           'Pergunta original: ' + texto + '\n\n' +
-          'Resultado da pesquisa na web:\n' + resultado + '\n\n' +
-          'Responda ao usuário de forma natural, sem mencionar que usou pesquisa.';
-        const r2 = await chamarGPT4oMini(textoComResultado, false);
+          partes.join('\n\n') + '\n\n' +
+          'Responda ao usuário com base nas informações acima, de forma natural e polida, sem mencionar que usou ferramentas.';
+
+        const r2 = await chamarGPT4oMini(textoComResultado);
         const c2 = extrairConteudo(r2.body);
         if (c2) return res.json({ resposta: c2 });
-        return res.json({ resposta: resultado });
+
+        return res.json({ resposta: partes.join('\n\n') });
       }
+      console.log('→ Nenhuma ferramenta retornou nada útil');
     }
 
     const esperas = [0, 5000];
@@ -187,7 +198,7 @@ app.post('/chat', async (req, res) => {
 
     for (let i = 0; i < esperas.length; i++) {
       if (esperas[i] > 0) await dormir(esperas[i]);
-      const r = await chamarGPT4oMini(textoComLembrete, usarFerramentas);
+      const r = await chamarGPT4oMini(textoComLembrete);
       ultimo = r;
       if (r.status === 429) continue;
       const c = extrairConteudo(r.body);
@@ -199,34 +210,6 @@ app.post('/chat', async (req, res) => {
         erro: 'IA indisponível',
         detalhe: ultimo?.body?.substring(0, 200) || ''
       });
-    }
-
-    if (usarFerramentas) {
-      const matchPesquisa = respostaGPT.match(/\[TOOL:pesquisa\]\s*(.+)/i);
-      const matchPlacar = respostaGPT.match(/\[TOOL:placar\]\s*(.+)/i);
-
-      let resultadoFerramenta = null;
-      let nomeFerramenta = '';
-
-      if (matchPesquisa) {
-        nomeFerramenta = 'pesquisa';
-        resultadoFerramenta = await pesquisarWeb(matchPesquisa[1].trim());
-      } else if (matchPlacar) {
-        nomeFerramenta = 'placar';
-        resultadoFerramenta = await buscarPlacar(matchPlacar[1].trim());
-      }
-
-      if (resultadoFerramenta) {
-        const textoComResultado =
-          LEMBRETE + '\n\n' +
-          'Pergunta original: ' + texto + '\n\n' +
-          'Resultado da ferramenta ' + nomeFerramenta + ':\n' + resultadoFerramenta + '\n\n' +
-          'Responda ao usuário de forma natural, sem mencionar ferramenta.';
-        const r2 = await chamarGPT4oMini(textoComResultado, false);
-        const c2 = extrairConteudo(r2.body);
-        if (c2) return res.json({ resposta: c2 });
-        return res.json({ resposta: resultadoFerramenta });
-      }
     }
 
     return res.json({ resposta: respostaGPT });
