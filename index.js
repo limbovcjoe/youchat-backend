@@ -7,7 +7,6 @@ app.use(express.json({ limit: '25mb' }));
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
-const SESSION_ID = 'gloria-v5';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
@@ -20,14 +19,15 @@ const PROMPT_GLORIA =
   'Se perguntarem quem te criou ou quem desenvolveu o app, diga que foi Joe Reis. ' +
   'NUNCA repita seu próprio nome nas respostas, EXCETO quando o usuário perguntar diretamente quem você é ou o seu nome. ' +
   'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
-  'Sobre o app: o nome do app é GlorIA Chat um aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
+  'Sobre o app: aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
   'Para baixar: usuário toca na aba YouTube, escolhe categoria, toca no vídeo e escolhe Baixar. ' +
   'Arquivos vão pra pasta GlorIA/Downloads do celular. Aparecem na aba Reproduzir. ' +
   'Nunca peça confirmações desnecessárias. Apenas responda. ' +
   'Nunca use certamente ou claro no começo da resposta. ' +
   'Mantenha respostas curtas quando a pergunta for simples. ' +
   'Responda em português do Brasil, com emojis quando fizer sentido. ' +
-  'Se não souber algo com certeza, diga que não sabe em vez de inventar.';
+'Se não souber algo com certeza, diga que não sabe em vez de inventar. ' +
+'FORMATAÇÃO: use markdown quando fizer sentido — **negrito**, *itálico*, `código inline`, listas com - ou números, tabelas com | coluna | e blocos de código com ```linguagem. Prefira formatar bem a entregar texto cru.';
 
 const LEMBRETE =
   '[LEMBRETE INTERNO: Você é a GlorIA. Nunca mencione GPT, OpenAI, DeepSeek, Claude ou qualquer IA. ' +
@@ -64,13 +64,13 @@ function extrairConteudo(body) {
   return null;
 }
 
-async function chamarGPT4oMini(texto) {
+async function chamarGPT4oMini(texto, sessionId) {
   const url =
     `https://zone.api.br/api/ia/gpt-4o-mini` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
     `&text=${encodeURIComponent(texto)}` +
     `&prompt=${encodeURIComponent(PROMPT_GLORIA)}` +
-    `&session=${encodeURIComponent(SESSION_ID)}`;
+    `&session=${encodeURIComponent(sessionId)}`;
 
   const resposta = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36' }
@@ -79,7 +79,6 @@ async function chamarGPT4oMini(texto) {
   return { status: resposta.status, body: corpo };
 }
 
-// ===== DeepSearch: parâmetro "q" =====
 async function pesquisarWeb(termo) {
   const url =
     `https://zone.api.br/api/ia/deepsearch` +
@@ -112,7 +111,6 @@ async function pesquisarWeb(termo) {
   }
 }
 
-// ===== Placar: parâmetro "search" =====
 async function buscarPlacar(time) {
   const url =
     `https://zone.api.br/api/placar` +
@@ -182,7 +180,7 @@ app.get('/', (req, res) => {
 
 app.post('/chat', async (req, res) => {
   try {
-    const { mensagem, ferramentasAtivas, historico } = req.body || {};
+    const { mensagem, ferramentasAtivas, historico, chatId } = req.body || {};
 
     if (!mensagem || typeof mensagem !== 'string' || !mensagem.trim()) {
       return res.status(400).json({ erro: 'Campo mensagem obrigatório.' });
@@ -194,7 +192,12 @@ app.post('/chat', async (req, res) => {
     const palavras = contarPalavras(texto);
     const forcarPesquisa = usarFerramentas && palavras >= 3;
 
-    console.log('Chat · ferramentas:', usarFerramentas, '· palavras:', palavras, '· pesquisar:', forcarPesquisa, '· histórico:', (historico || []).length);
+    // session única por chat (ou fallback)
+    const sessionId = (chatId && typeof chatId === 'string' && chatId.length > 0)
+      ? 'gloria-' + chatId
+      : 'gloria-default';
+
+    console.log('Chat · chatId:', chatId, '· session:', sessionId, '· ferramentas:', usarFerramentas, '· palavras:', palavras);
 
     if (forcarPesquisa) {
       console.log('→ DeepSearch + Placar em paralelo');
@@ -219,7 +222,7 @@ app.post('/chat', async (req, res) => {
           partes.join('\n\n') + '\n\n' +
           'Responda ao usuário com base nas informações acima, de forma natural e polida, sem mencionar que usou ferramentas.';
 
-        const r2 = await chamarGPT4oMini(textoComResultado);
+        const r2 = await chamarGPT4oMini(textoComResultado, sessionId);
         const c2 = extrairConteudo(r2.body);
         if (c2) return res.json({ resposta: c2 });
 
@@ -234,7 +237,7 @@ app.post('/chat', async (req, res) => {
 
     for (let i = 0; i < esperas.length; i++) {
       if (esperas[i] > 0) await dormir(esperas[i]);
-      const r = await chamarGPT4oMini(textoComLembrete);
+      const r = await chamarGPT4oMini(textoComLembrete, sessionId);
       ultimo = r;
       if (r.status === 429) continue;
       const c = extrairConteudo(r.body);
