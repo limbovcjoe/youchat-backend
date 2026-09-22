@@ -20,7 +20,7 @@ const PROMPT_GLORIA =
   'Se perguntarem quem te criou ou quem desenvolveu o app, diga que foi Joe Reis. ' +
   'NUNCA repita seu próprio nome nas respostas, EXCETO quando o usuário perguntar diretamente quem você é ou o seu nome. ' +
   'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
-  'Sobre o app: aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
+  'Sobre o app: o nome do app é GlorIA Chat um aplicativo pessoal do Joe Reis que faz duas coisas: (1) conversa com IA (você); (2) baixa vídeos e músicas do YouTube. ' +
   'Para baixar: usuário toca na aba YouTube, escolhe categoria, toca no vídeo e escolhe Baixar. ' +
   'Arquivos vão pra pasta GlorIA/Downloads do celular. Aparecem na aba Reproduzir. ' +
   'Nunca peça confirmações desnecessárias. Apenas responda. ' +
@@ -41,8 +41,19 @@ function contarPalavras(texto) {
   return texto.trim().split(/\s+/).filter(p => p.length > 0).length;
 }
 
-function montarTexto(mensagem) {
-  return LEMBRETE + '\n\n' + mensagem;
+function montarTexto(mensagem, historico) {
+  let partes = [LEMBRETE];
+
+  if (historico && historico.length > 0) {
+    const ultimas = historico.slice(-10);
+    const linhas = ultimas.map(h =>
+      (h.de === 'user' ? 'Usuário' : 'GlorIA') + ': ' + h.texto
+    ).join('\n');
+    partes.push('[Histórico recente da conversa]\n' + linhas + '\n[Fim do histórico]');
+  }
+
+  partes.push(mensagem);
+  return partes.join('\n\n');
 }
 
 function extrairConteudo(body) {
@@ -68,7 +79,7 @@ async function chamarGPT4oMini(texto) {
   return { status: resposta.status, body: corpo };
 }
 
-// ===== DeepSearch: parâmetro correto é "q" =====
+// ===== DeepSearch: parâmetro "q" =====
 async function pesquisarWeb(termo) {
   const url =
     `https://zone.api.br/api/ia/deepsearch` +
@@ -84,7 +95,6 @@ async function pesquisarWeb(termo) {
 
     if (!dados?.status || !dados?.result) return '';
 
-    // corta repetição (bug da API que repete 4x)
     let resultado = dados.result;
     if (resultado.length > 1500) {
       const metade = resultado.substring(0, 1500);
@@ -102,7 +112,7 @@ async function pesquisarWeb(termo) {
   }
 }
 
-// ===== Placar: parâmetro correto é "search" =====
+// ===== Placar: parâmetro "search" =====
 async function buscarPlacar(time) {
   const url =
     `https://zone.api.br/api/placar` +
@@ -172,19 +182,19 @@ app.get('/', (req, res) => {
 
 app.post('/chat', async (req, res) => {
   try {
-    const { mensagem, ferramentasAtivas } = req.body || {};
+    const { mensagem, ferramentasAtivas, historico } = req.body || {};
 
     if (!mensagem || typeof mensagem !== 'string' || !mensagem.trim()) {
       return res.status(400).json({ erro: 'Campo mensagem obrigatório.' });
     }
 
     const texto = mensagem.trim();
-    const textoComLembrete = montarTexto(texto);
+    const textoComLembrete = montarTexto(texto, historico);
     const usarFerramentas = ferramentasAtivas === true;
     const palavras = contarPalavras(texto);
     const forcarPesquisa = usarFerramentas && palavras >= 3;
 
-    console.log('Chat · ferramentas:', usarFerramentas, '· palavras:', palavras, '· pesquisar:', forcarPesquisa);
+    console.log('Chat · ferramentas:', usarFerramentas, '· palavras:', palavras, '· pesquisar:', forcarPesquisa, '· histórico:', (historico || []).length);
 
     if (forcarPesquisa) {
       console.log('→ DeepSearch + Placar em paralelo');
