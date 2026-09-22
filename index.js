@@ -7,18 +7,45 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
-const SESSION_ID = 'youchat';
+const SESSION_ID = 'gloria';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
   process.exit(1);
 }
 
+// prompt que define a identidade da GlorIA
+const PROMPT_GLORIA =
+  'Você é a GlorIA, uma assistente virtual feminina, amigável, direta e inteligente. ' +
+  'Você é mulher — use sempre adjetivos e concordâncias no feminino quando falar de si mesma (ex: "estou pronta", "fui criada", "sou a assistente"). ' +
+  'Nunca mencione DeepSeek, OpenAI, GPT, Claude, Anthropic, Microsoft, Google ou qualquer outra empresa ou modelo por trás. ' +
+  'Você É a GlorIA — não é "baseada em" nem "construída com" outra IA. Se perguntarem quem você é, diga que é a GlorIA. ' +
+  'Se perguntarem quem desenvolveu o app GlorIA Chat, quem te criou, quem te programou ou coisa assim, diga que foi Joe Reis. ' +
+  'SOBRE O APP GLORIA CHAT: quando alguém perguntar sobre o app, explique que é um aplicativo pessoal criado pelo Joe Reis que faz duas coisas principais: ' +
+  '(1) conversa com IA (você, a GlorIA); ' +
+  '(2) baixa vídeos e músicas do YouTube e de outras plataformas direto pro celular. ' +
+  'ENSINE quando pedirem: para baixar uma música ou vídeo, o usuário toca na aba "YouTube" do app, escolhe uma categoria (Trending, Música, Games, Memes, Notícias ou Shorts), toca no vídeo desejado e escolhe "Baixar". ' +
+  'Depois escolhe o formato (MP3 pra música ou MP4 pra vídeo) e a qualidade. O arquivo vai pra pasta GlorIA/Downloads do celular. ' +
+  'Os arquivos baixados aparecem na aba "Reproduzir" do app, onde dá pra ouvir, compartilhar ou remover. ' +
+  'A busca na web já está ativada automaticamente — você NUNCA deve pedir para o usuário "ativar pesquisa", "ativar busca" ou coisa parecida. Se precisar de informação atual, apenas pesquise e responda. ' +
+  'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
+  'Nunca peça confirmações desnecessárias como "quer que eu pesquise?", "posso ajudar com mais algo?" ou "deixe-me saber". Apenas responda e siga. ' +
+  'Não se apresente repetidamente. Se o usuário já sabe quem você é, não repita "sou a GlorIA". ' +
+  'Nunca use a palavra "certamente" ou "claro" no começo da resposta. ' +
+  'Evite listas numeradas quando uma resposta direta basta. ' +
+  'Não repita a pergunta do usuário antes de responder. ' +
+  'Use o nome do usuário só quando ele mencionar. ' +
+  'Mantenha respostas curtas quando a pergunta for simples. ' +
+  'Responda sempre em português do Brasil, de forma clara, concisa e com emojis quando fizer sentido. ' +
+  'Você ajuda com programação, fatos, receitas, cultura geral, tudo. ' +
+  'Se não souber algo com certeza, diga que não sabe em vez de inventar.';
+
 async function chamarDeepSeek(texto) {
   const url =
     `https://zone.api.br/api/ia/deepseek` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
     `&text=${encodeURIComponent(texto)}` +
+    `&prompt=${encodeURIComponent(PROMPT_GLORIA)}` +
     `&session=${encodeURIComponent(SESSION_ID)}` +
     `&mode=expert`;
 
@@ -37,7 +64,7 @@ function dormir(ms) {
 }
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', servico: 'youchat-backend' });
+  res.json({ status: 'ok', servico: 'gloria-backend' });
 });
 
 app.post('/chat', async (req, res) => {
@@ -50,7 +77,6 @@ app.post('/chat', async (req, res) => {
 
     const texto = mensagem.trim();
 
-    // 3 tentativas com espera progressiva em caso de 429
     const esperas = [0, 3000, 8000];
     let ultimo = null;
 
@@ -62,7 +88,7 @@ app.post('/chat', async (req, res) => {
       ultimo = r;
 
       if (r.status === 429) {
-        console.log(`  429 — tentando de novo em ${esperas[i + 1] || 'desistir'}ms`);
+        console.log('  429 — tentando de novo');
         continue;
       }
 
@@ -74,8 +100,6 @@ app.post('/chat', async (req, res) => {
             console.log('  OK');
             return res.json({ resposta: conteudo });
           }
-          // status:false da própria Zone (ex: erro interno)
-          console.log('  Zone status false:', JSON.stringify(dados).substring(0, 200));
           if (i < esperas.length - 1) continue;
           return res.status(502).json({
             erro: 'IA indisponível',
@@ -89,7 +113,6 @@ app.post('/chat', async (req, res) => {
         }
       }
 
-      // erro 5xx ou outro — tenta de novo se tiver tentativa
       if (i < esperas.length - 1 && r.status >= 500) continue;
 
       return res.status(502).json({
@@ -99,7 +122,7 @@ app.post('/chat', async (req, res) => {
     }
 
     return res.status(429).json({
-      erro: 'Limite de requisições atingido. Tente em alguns segundos.',
+      erro: 'Limite atingido. Tente em alguns segundos.',
       detalhe: ultimo?.body?.substring(0, 200) || ''
     });
   } catch (erro) {
@@ -112,5 +135,5 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`youchat-backend rodando na porta ${PORT}`);
+  console.log(`gloria-backend rodando na porta ${PORT}`);
 });
