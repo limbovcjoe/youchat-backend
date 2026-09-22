@@ -27,7 +27,7 @@ const PROMPT_GLORIA =
   'Mantenha respostas curtas quando a pergunta for simples. ' +
   'Responda em português do Brasil, com emojis quando fizer sentido. ' +
 'Se não souber algo com certeza, diga que não sabe em vez de inventar. ' +
-'FORMATAÇÃO: use markdown quando fizer sentido — **negrito**, *itálico*, `código inline`, listas com - ou números, tabelas com | coluna | e blocos de código com ```linguagem. Prefira formatar bem a entregar texto cru.';
+'FORMATAÇÃO: use markdown quando fizer sentido. Em TABELAS, use exatamente o formato | col | col |, com uma linha separadora |---|---|, sem linhas em branco no meio, sem espaços extras. ';
 
 const LEMBRETE =
   '[LEMBRETE INTERNO: Você é a GlorIA. Nunca mencione GPT, OpenAI, DeepSeek, Claude ou qualquer IA. ' +
