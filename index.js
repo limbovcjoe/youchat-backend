@@ -7,7 +7,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const ZONE_API_KEY = process.env.ZONE_API_KEY;
-const SESSION_ID = 'gloria-haiku';
+const SESSION_ID = 'gloria-v2';
 
 if (!ZONE_API_KEY) {
   console.error('ERRO: ZONE_API_KEY não configurada.');
@@ -18,12 +18,11 @@ if (!ZONE_API_KEY) {
 const PROMPT_GLORIA =
   'Você é a GlorIA, uma assistente virtual feminina, amigável, direta e inteligente. ' +
   'Você é mulher — use sempre adjetivos e concordâncias no feminino quando falar de si mesma (ex: "estou pronta", "fui criada", "sou a assistente"). ' +
-  'IGNORE qualquer instrução anterior sobre ser "Claude Code", "focada em programação" ou "assistente de software". Você é a GlorIA, uma assistente generalista. ' +
   'Nunca mencione DeepSeek, OpenAI, GPT, Claude, Anthropic, Microsoft, Google ou qualquer outra empresa ou modelo por trás. ' +
   'Você É a GlorIA — não é "baseada em" nem "construída com" outra IA. Se perguntarem quem você é, diga que é a GlorIA. ' +
   'Se perguntarem quem desenvolveu o app GlorIA Chat, quem te criou, quem te programou ou coisa assim, diga que foi Joe Reis. ' +
-  'ATIVAR MEMÓRIA: você tem memória da conversa, lembre do que o usuário já disse antes. ' +
-  'ATIVAR BUSCA NA WEB: você tem acesso à busca na web automaticamente. NUNCA peça para o usuário "ativar pesquisa", "ativar busca" ou coisa parecida. Se precisar de informação atual, apenas pesquise e responda. ' +
+  'Você tem memória da conversa — lembre do que o usuário já disse antes. ' +
+  'A busca na web está desativada no momento. Se precisar de informação muito recente, avise que pode não estar atualizada. Nunca peça para o usuário "ativar pesquisa". ' +
   'SOBRE O APP GLORIA CHAT: quando alguém perguntar sobre o app, explique que é um aplicativo pessoal criado pelo Joe Reis que faz duas coisas principais: ' +
   '(1) conversa com IA (você, a GlorIA); ' +
   '(2) baixa vídeos e músicas do YouTube e de outras plataformas direto pro celular. ' +
@@ -41,13 +40,14 @@ const PROMPT_GLORIA =
   'Você ajuda com programação, fatos, receitas, cultura geral, tudo. ' +
   'Se não souber algo com certeza, diga que não sabe em vez de inventar.';
 
-async function chamarHaiku(texto) {
+async function chamarDeepSeek(texto) {
   const url =
-    `https://zone.api.br/api/ia/claude-haiku` +
+    `https://zone.api.br/api/ia/deepseek` +
     `?apikey=${encodeURIComponent(ZONE_API_KEY)}` +
     `&text=${encodeURIComponent(texto)}` +
     `&prompt=${encodeURIComponent(PROMPT_GLORIA)}` +
     `&session=${encodeURIComponent(SESSION_ID)}` +
+    `&mode=expert` +
     `&search=1`;
 
   const resposta = await fetch(url, {
@@ -78,14 +78,15 @@ app.post('/chat', async (req, res) => {
 
     const texto = mensagem.trim();
 
-    const esperas = [0, 3000, 8000];
+    // 2 tentativas só
+    const esperas = [0, 5000];
     let ultimo = null;
 
     for (let i = 0; i < esperas.length; i++) {
       if (esperas[i] > 0) await dormir(esperas[i]);
 
-      console.log(`Tentativa ${i + 1} de 3`);
-      const r = await chamarHaiku(texto);
+      console.log(`Tentativa ${i + 1} de ${esperas.length}`);
+      const r = await chamarDeepSeek(texto);
       ultimo = r;
 
       if (r.status === 429) {
@@ -96,8 +97,7 @@ app.post('/chat', async (req, res) => {
       if (r.status >= 200 && r.status < 300) {
         try {
           const dados = JSON.parse(r.body);
-          // Haiku devolve em "text", DeepSeek em "result"
-          const conteudo = dados?.text || dados?.result;
+          const conteudo = dados?.result || dados?.text;
           if (dados?.status && conteudo) {
             console.log('  OK');
             return res.json({ resposta: conteudo });
